@@ -65,6 +65,9 @@ The control software is responsible for:
 - **FPGA Design Tool:** Vivado
 - **Embedded Linux:** PetaLinux
 - **Hardware Description Language:** Verilog
+## Demo Video
+
+[![FPGA CNN Accelerator Demo](docs/demo-thumbnail.png)](demo/demo.mp4)
 - **Communication Interface:** AXI4-Full
 - **Control Software:** C
 
