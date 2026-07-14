@@ -71,7 +71,7 @@ The control software is responsible for:
 
 Watch the demonstration of the FPGA-based 1-D CNN accelerator for EEG signal classification:
 
-[![Watch the demo](https://youtu.be/VgfGSVWmEwo)/0.jpg)]((https://youtu.be/VgfGSVWmEwo))
+[![Watch the demo](https://youtu.be/VgfGSVWmEwo)/0.jpg)](https://youtu.be/VgfGSVWmEwo))
 
 
 
