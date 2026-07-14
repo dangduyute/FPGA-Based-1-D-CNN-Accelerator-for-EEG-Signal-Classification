@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- <title></title> -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .connection-panel {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .connection-input {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .connection-input input {
+            padding: 10px 15px;
+            border: 2px solid white;
+            border-radius: 5px;
+            font-size: 16px;
+            width: 250px;
+        }
+
+        .connection-input button {
+            padding: 10px 30px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        .connection-input button:hover {
+            background: #45a049;
+        }
+
+        .connection-input button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .status.connected {
+            background: #4CAF50;
+        }
+
+        .status.disconnected {
+            background: #f44336;
+        }
+
+        .status.connecting {
+            background: #ff9800;
+        }
+
+        .top-bar {
+            background: white;
+            padding: 15px;
+            text-align: center;
+            border-bottom: 2px solid #e0e0e0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .chart-container {
+            padding: 0;
+            background: white;
+            position: relative;
+        }
+
+        #ecgCanvas {
+            width: 100%;
+            height: 360px;
+            display: block;
+            background: white;
+        }
+
+        .bottom-bar{
+        background: white;
+        padding: 15px;
+        border-top: 2px solid #e0e0e0;
+        font-size: 16px;
+
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        }
+
+        .prediction-display {
+            display: inline-block;
+            padding: 8px 20px;
+            background: #ffebee;
+            color: #c62828;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-left: 20px;
+        }
+
+        .log-container {
+            padding: 20px;
+            background: #f5f5f5;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            padding: 6px;
+            margin-bottom: 4px;
+            border-left: 3px solid #2a5298;
+            background: white;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .log-entry.error {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1> FPGA EEG Classification</h1>
+            
+            <div class="connection-panel">
+                <div class="connection-input">
+                    <label style="font-weight: bold;">FPGA IP:</label>
+                    <input type="text" id="fpgaIP" value="192.168.1.50" placeholder="192.168.1.50">
+                    <label style="font-weight: bold;">Port:</label>
+                    <input type="text" id="fpgaPort" value="8080" placeholder="8080" style="width: 100px;">
+                    <button id="connectBtn" onclick="connectWebSocket()">Kết nối</button>
+                </div>
+                <div class="status disconnected" id="connectionStatus">Chưa kết nối</div>
+            </div>
+        </div>
+
+        <div class="top-bar" id="topBar">
+            Accuracy: 0.00% (0/0)
+        </div>
+
+        <div class="chart-container">
+            <canvas id="ecgCanvas"></canvas>
+        </div>
+
+        <div class="bottom-bar" id="bottomBar">
+            <span id="gtDisplay">GT: - (Chờ dữ liệu...)</span>
+            <span class="prediction-display" id="predDisplay">Pred: - (Chờ dữ liệu...)</span>
+        </div>
+
+        <div class="log-container" id="logContainer">
+            <div class="log-entry">Hệ thống đã sẵn sàng. Nhập IP của FPGA và nhấn Kết nối...</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('ecgCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas size
+        canvas.width = 1000;
+        canvas.height = 360;
+        
+        const TOP_BAR = 0;
+        const BOT_BAR = 0;
+        const PLOT_H = canvas.height - TOP_BAR - BOT_BAR;
+
+        // Ring buffer for 5-second window
+        const fs = 360.0;
+        const view_seconds = 5.0;
+        const win_len = Math.floor(fs * view_seconds);  // 1800 samples
+        
+        let buf = new Array(win_len).fill(0);
+        let buf_n = 0;
+        let buf_head = 0;
+        let total_samples = 0;
+        
+        // Current beat tracking
+        let box_start = -1;
+        let box_end = -1;
+        let current_gt = -1;
+        let current_pred = -1;
+        let current_gt_label = "";
+        let current_pred_label = "";
+        let show_pred = false;
+
+        // WebSocket
+        let ws = null;
+        let isManualDisconnect = false;
+
+        function connectWebSocket() {
+            const ip = document.getElementById('fpgaIP').value;
+            const port = document.getElementById('fpgaPort').value;
+            const connectBtn = document.getElementById('connectBtn');
+            
+            if (!ip || !port) {
+                addLog('Vui lòng nhập IP và Port', true);
+                return;
+            }
+
+            if (ws) {
+                isManualDisconnect = true;
+                ws.close();
+            }
+
+            isManualDisconnect = false;
+            connectBtn.disabled = true;
+            document.getElementById('connectionStatus').textContent = 'Đang kết nối...';
+            document.getElementById('connectionStatus').className = 'status connecting';
+
+            const wsUrl = `ws://${ip}:${port}`;
+            addLog(`Đang kết nối tới ${wsUrl}...`);
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                document.getElementById('connectionStatus').textContent = `Đã kết nối: ${ip}:${port}`;
+                document.getElementById('connectionStatus').className = 'status connected';
+                connectBtn.textContent = 'Ngắt kết nối';
+                connectBtn.disabled = false;
+                addLog(`✓ Kết nối thành công tới ${wsUrl}`);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                document.getElementById('connectionStatus').textContent = 'Mất kết nối';
+                document.getElementById('connectionStatus').className = 'status disconnected';
+                connectBtn.textContent = 'Kết nối';
+                connectBtn.disabled = false;
+                
+                if (!isManualDisconnect) {
+                    addLog('Mất kết nối WebSocket. Thử kết nối lại sau 3s...', true);
+                    setTimeout(connectWebSocket, 3000);
+                } else {
+                    addLog('Đã ngắt kết nối');
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addLog(`Lỗi kết nối: Không thể kết nối tới ${wsUrl}`, true);
+                connectBtn.disabled = false;
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleMessage(message);
+                } catch (e) {
+                    console.error('Parse error:', e);
+                }
+            };
+        }
+
+        function handleMessage(msg) {
+            switch(msg.type) {
+                case 'status':
+                addLog(msg.data.message, msg.data.message.includes('ERROR'));
+                break;
+
+                case 'beat_start':
+                handleBeatStart(msg.data);
+                break;
+
+                case 'sample':
+                updateSample(msg.data);
+                break;
+
+                case 'beat_pred':          // ✅ THÊM CÁI NÀY
+                handleBeatPred(msg.data);
+                break;
+
+                case 'result':
+                updateFinalResult(msg.data);
+                break;
+            }
+            }
+        function handleBeatStart(data) {
+            // Mark start of new beat
+            box_start = total_samples;
+            box_end = total_samples + 320;
+            current_gt = data.gt;
+            current_pred = data.pred;
+            current_gt_label = data.gt_label;
+            current_pred_label = data.pred_label;
+            show_pred = false;
+            
+            // Update bottom bar
+            document.getElementById('gtDisplay').textContent =
+                 `GT: ${current_gt} (${current_gt_label})`;
+            document.getElementById('predDisplay').textContent = 
+                `Pred: ${current_pred} (${current_pred_label})`;
+            document.getElementById('predDisplay').style.background = 
+                (current_gt === current_pred) ? '#e8f5e9' : '#ffebee';
+            document.getElementById('predDisplay').style.color = 
+                (current_gt === current_pred) ? '#2e7d32' : '#c62828';
+            
+           const bid = (data.beat_id !== undefined) ? data.beat_id : Math.floor(box_start/320)+1;
+addLog(`Beat ${bid}: GT=${current_gt} Pred=${current_pred}`);
+current_beat_id = bid; 
+        }
+        function handleBeatPred(data) {
+  // Backend gửi pred thật ở đây
+  current_pred = data.pred;
+  current_pred_label = data.pred_label || "";
+
+  // Update pred UI
+  document.getElementById('predDisplay').textContent =
+    `Pred: ${current_pred} (${current_pred_label})`;
+
+  const ok = (current_gt === current_pred);
+  document.getElementById('predDisplay').style.background = ok ? '#e8f5e9' : '#ffebee';
+  document.getElementById('predDisplay').style.color = ok ? '#2e7d32' : '#c62828';
+
+  // Update top bar nếu backend có gửi accuracy/total/correct
+  if (data.total !== undefined && data.correct !== undefined && data.accuracy !== undefined) {
+    document.getElementById('topBar').textContent =
+      `Accuracy: ${Number(data.accuracy).toFixed(2)}% (${data.correct}/${data.total})`;
+  }
+
+  const bid = (data.beat_id !== undefined) ? data.beat_id : current_beat_id;
+addLog(`Beat ${bid}: Pred=${current_pred}`);
+
+}
+        function updateSample(data) {
+            // Show prediction after 75% of beat (240 samples)
+            if (box_start >= 0 && (total_samples - box_start) >= 240) {
+                show_pred = true;
+            }
+
+            // Add sample to ring buffer
+            if (buf_n < win_len) {
+                buf[buf_n++] = data.value;
+            } else {
+                buf[buf_head] = data.value;
+                buf_head = (buf_head + 1) % win_len;
+            }
+            total_samples++;
+
+            // Update top bar
+            if (data.total && data.correct !== undefined) {
+                document.getElementById('topBar').textContent = 
+                    `Accuracy: ${data.accuracy.toFixed(2)}% (${data.correct}/${data.total})`;
+            }
+        }
+
+        function updateFinalResult(data) {
+            document.getElementById('topBar').textContent = 
+                `Final Accuracy: ${data.accuracy.toFixed(2)}% (${data.correct}/${data.total}) - Time: ${data.time.toFixed(2)}s`;
+            addLog(`Hoàn thành! Accuracy: ${data.accuracy.toFixed(2)}%, Thời gian: ${data.time.toFixed(2)}s`);
+        }
+
+        function drawChart() {
+            // Clear canvas
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (buf_n < 2) return;
+
+            const WIDTH = canvas.width;
+            const HEIGHT = canvas.height;
+
+            // Calculate y-range
+            // Fixed y-range
+            const ymin = -256;
+            const ymax = 256;
+
+            // Draw red box for current beat (if visible)
+            const vis_start = total_samples - buf_n;
+            const vis_end = total_samples;
+            
+            if (box_start >= 0 && box_end >= 0) {
+                const is0 = Math.max(box_start, vis_start);
+                const is1 = Math.min(box_end, vis_end);
+                
+                if (is1 > is0) {
+                    const b0 = is0 - vis_start;
+                    const b1 = is1 - vis_start;
+                    const X0 = Math.floor((b0 / win_len) * (WIDTH - 1));
+                    const X1 = Math.floor((b1 / win_len) * (WIDTH - 1));
+                    
+                    // Draw red box
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
+                    ctx.fillRect(X0, TOP_BAR, X1 - X0, PLOT_H);
+                    ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(X0, TOP_BAR, X1 - X0, PLOT_H);
+                    
+                    // Draw prediction label if ready
+                    if (show_pred) {
+                        const pred_text = `Pred: ${current_pred} (${current_pred_label})`;
+                        ctx.fillStyle = 'red';
+                        ctx.font = 'bold 14px Arial';
+                        ctx.textAlign = 'center';
+                        const x_text = X0 + (X1 - X0) / 2;
+                        ctx.fillText(pred_text, x_text, TOP_BAR + 20);
+                    }
+                }
+            }
+
+            // Draw ECG waveform
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+
+            for (let i = 0; i < buf_n; i++) {
+                const idx = (buf_head + i) % buf_n;
+                const v = buf[idx];
+                
+                const x = (i / win_len) * (WIDTH - 1);
+                const y = TOP_BAR + (1.0 - (v - ymin) / (ymax - ymin)) * (PLOT_H - 1);
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
+        }
+
+        function addLog(message, isError = false) {
+            const logContainer = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry' + (isError ? ' error' : '');
+            const timestamp = new Date().toLocaleTimeString('vi-VN');
+            entry.textContent = `[${timestamp}] ${message}`;
+            logContainer.insertBefore(entry, logContainer.firstChild);
+            
+            while (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+
+        // Connect button toggle
+        document.getElementById('connectBtn').onclick = function() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                isManualDisconnect = true;
+                ws.close();
+                this.textContent = 'Kết nối';
+            } else {
+                connectWebSocket();
+            }
+        };
+
+        // Animation loop for smooth rendering
+        let lastRender = Date.now();
+        function animate() {
+            const now = Date.now();
+            if (now - lastRender >= 16) {  // Update every 50ms (20 FPS)
+            drawChart();
+                 lastRender = now;
+             }
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        addLog('Nhập IP của FPGA và nhấn "Kết nối"');
+    </script>
+</body>
+</html>
